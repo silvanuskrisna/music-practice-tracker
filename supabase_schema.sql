@@ -7,10 +7,21 @@ create extension if not exists pgcrypto;
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) > 0),
+  default_instrument text not null default 'Gitar' check (default_instrument in ('Gitar', 'Piano', 'Drum')),
   weekly_target_seconds integer not null default 300 check (weekly_target_seconds > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.students
+add column if not exists default_instrument text not null default 'Gitar';
+
+alter table public.students
+drop constraint if exists students_default_instrument_check;
+
+alter table public.students
+add constraint students_default_instrument_check
+check (default_instrument in ('Gitar', 'Piano', 'Drum'));
 
 create table if not exists public.practice_sessions (
   id uuid primary key default gen_random_uuid(),

@@ -228,11 +228,13 @@ function fromSupabaseSession(row) {
 }
 
 function fromSupabaseStudent(row, sessions) {
+  const studentSessions = sessions.filter(function(s) { return s.student_id === row.id; }).map(fromSupabaseSession);
   return {
     id: row.id,
     name: row.name,
+    defaultInstrument: row.default_instrument || (studentSessions[0] ? studentSessions[0].instrument : "Gitar"),
     weeklyTarget: row.weekly_target_seconds,
-    sessions: sessions.filter(function(s) { return s.student_id === row.id; }).map(fromSupabaseSession),
+    sessions: studentSessions,
   };
 }
 
@@ -267,6 +269,7 @@ async function createSupabaseStudent(profile) {
     .from("students")
     .insert({
       name: profile.name,
+      default_instrument: profile.defaultInstrument,
       weekly_target_seconds: profile.weeklyTarget,
     })
     .select("*")
@@ -284,6 +287,7 @@ async function syncSupabaseProfile(profile) {
     .upsert({
       id: String(profile.id),
       name: profile.name,
+      default_instrument: profile.defaultInstrument || "Gitar",
       weekly_target_seconds: profile.weeklyTarget,
     });
   if (studentResult.error) throw studentResult.error;
@@ -314,7 +318,10 @@ async function uploadLocalDataToSupabase(localData) {
   const nextProfiles = [];
   const idMap = {};
   for (const profile of localData.profiles) {
-    const created = await createSupabaseStudent(profile);
+    const normalizedProfile = Object.assign({}, profile, {
+      defaultInstrument: profile.defaultInstrument || (profile.sessions && profile.sessions.length ? profile.sessions[profile.sessions.length - 1].instrument : "Gitar"),
+    });
+    const created = await createSupabaseStudent(normalizedProfile);
     idMap[profile.id] = created.id;
     const nextProfile = Object.assign({}, created, {
       sessions: profile.sessions.map(function(session, index) {
@@ -336,11 +343,13 @@ async function uploadLocalDataToSupabase(localData) {
 function HomeScreen({ data, onSelect, onAdd, onDelete, syncStatus }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newInstrument, setNewInstrument] = useState("Gitar");
 
   function handleAdd() {
     if (!newName.trim()) return;
-    onAdd(newName.trim());
+    onAdd(newName.trim(), newInstrument);
     setNewName("");
+    setNewInstrument("Gitar");
     setShowAdd(false);
   }
 
@@ -359,17 +368,17 @@ function HomeScreen({ data, onSelect, onAdd, onDelete, syncStatus }) {
         {data.profiles.map(function(p) {
           const total = p.sessions.reduce(function(a,s) { return a + s.duration; }, 0);
           const week = sessionsInWeek(p.sessions, getWeekKey(todayStr())).reduce(function(a,s) { return a + s.duration; }, 0);
-          const lastInst = p.sessions.length ? p.sessions[p.sessions.length - 1].instrument : null;
+          const defaultInst = p.defaultInstrument || (p.sessions.length ? p.sessions[p.sessions.length - 1].instrument : "Gitar");
           return (
             <div key={p.id} onClick={function() { onSelect(p.id); }}
               style={{ background:"var(--color-background-primary)", border:"0.5px solid var(--color-border-tertiary)", borderRadius:"var(--border-radius-lg)", padding:"0.9rem 1rem", cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
               <div style={{ width:44, height:44, borderRadius:"50%", background:"var(--color-background-secondary)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
-                {lastInst ? (INST_ICON[lastInst] || "🎵") : "🎵"}
+                {INST_ICON[defaultInst] || "🎵"}
               </div>
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:500, fontSize:15, color:"var(--color-text-primary)" }}>{p.name}</div>
                 <div style={{ fontSize:12, color:"var(--color-text-secondary)", marginTop:2 }}>
-                  Minggu ini: {formatTime(week)} · Total: {formatTime(total)}
+                  {defaultInst} · Minggu ini: {formatTime(week)} · Total: {formatTime(total)}
                 </div>
               </div>
               <button onClick={function(e) { e.stopPropagation(); onDelete(p.id); }}
@@ -385,9 +394,23 @@ function HomeScreen({ data, onSelect, onAdd, onDelete, syncStatus }) {
           <input value={newName} onChange={function(e) { setNewName(e.target.value); }}
             onKeyDown={function(e) { if (e.key === "Enter") handleAdd(); }}
             placeholder="Masukkan nama..." style={{ width:"100%", boxSizing:"border-box" }} autoFocus />
+          <div>
+            <div style={{ fontSize:12, color:"var(--color-text-secondary)", marginBottom:6 }}>Instrumen utama</div>
+            <div style={{ display:"flex", gap:8 }}>
+              {INSTRUMENTS.map(function(inst) {
+                return (
+                  <button key={inst} onClick={function() { setNewInstrument(inst); }}
+                    style={{ flex:1, padding:"8px 0", fontSize:12, background:newInstrument===inst?"var(--color-background-primary)":"transparent", border:"0.5px solid "+(newInstrument===inst?"var(--color-border-secondary)":"var(--color-border-tertiary)"), borderRadius:"var(--border-radius-md)", cursor:"pointer", color:newInstrument===inst?"var(--color-text-primary)":"var(--color-text-secondary)", display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                    <span style={{ fontSize:18 }}>{INST_ICON[inst]}</span>
+                    <span>{inst}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={handleAdd} style={{ flex:1, padding:"9px", background:"#1D9E75", color:"#fff", border:"none", borderRadius:"var(--border-radius-md)", fontSize:13, cursor:"pointer" }}>Tambah</button>
-            <button onClick={function() { setShowAdd(false); setNewName(""); }}
+            <button onClick={function() { setShowAdd(false); setNewName(""); setNewInstrument("Gitar"); }}
               style={{ flex:1, padding:"9px", background:"transparent", border:"0.5px solid var(--color-border-tertiary)", borderRadius:"var(--border-radius-md)", fontSize:13, color:"var(--color-text-secondary)", cursor:"pointer" }}>Batal</button>
           </div>
         </div>
@@ -496,8 +519,8 @@ export default function App() {
     update(function(prev) { return Object.assign({}, prev, { activeId: id }); });
   }
 
-  async function handleAdd(name) {
-    const baseProfile = { id: String(Date.now()), name:name, sessions:[], weeklyTarget:300 };
+  async function handleAdd(name, defaultInstrument) {
+    const baseProfile = { id: String(Date.now()), name:name, defaultInstrument:defaultInstrument || "Gitar", sessions:[], weeklyTarget:300 };
     let profile = baseProfile;
     try {
       profile = await createSupabaseStudent(baseProfile);
@@ -643,7 +666,7 @@ function MateriPicker({ instrument, value, onChange }) {
 function TimerTab({ profile, updateProfile, onSaveSession }) {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [instrument, setInstrument] = useState("");
+  const instrument = profile.defaultInstrument || "Gitar";
   const [currentMateri, setCurrentMateri] = useState("");
   const [materiStart, setMateriStart] = useState(0);
   const [segments, setSegments] = useState([]);
@@ -666,7 +689,6 @@ function TimerTab({ profile, updateProfile, onSaveSession }) {
   }, [running]);
 
   function handleStart() {
-    if (!instrument) return;
     setSaved(false);
     setMateriStart(elapsed);
     setRunning(true);
@@ -732,16 +754,12 @@ function TimerTab({ profile, updateProfile, onSaveSession }) {
     <div>
       <div style={{ background:"var(--color-background-secondary)", borderRadius:"var(--border-radius-lg)", padding:"1rem", marginBottom:"1rem" }}>
         <div style={{ fontSize:12, color:"var(--color-text-secondary)", marginBottom:6 }}>Instrumen</div>
-        <div style={{ display:"flex", gap:8 }}>
-          {INSTRUMENTS.map(function(inst) {
-            return (
-              <button key={inst} onClick={function() { if (!running) { setInstrument(inst); setCurrentMateri(""); setSegments([]); } }}
-                style={{ flex:1, padding:"9px 0", fontSize:13, background:instrument===inst?"var(--color-background-primary)":"transparent", border:"0.5px solid "+(instrument===inst?"var(--color-border-secondary)":"var(--color-border-tertiary)"), borderRadius:"var(--border-radius-md)", cursor:running?"not-allowed":"pointer", color:instrument===inst?"var(--color-text-primary)":"var(--color-text-secondary)", display:"flex", flexDirection:"column", alignItems:"center", gap:2, opacity:running&&instrument!==inst?0.4:1 }}>
-                <span style={{ fontSize:20 }}>{INST_ICON[inst]}</span>
-                <span style={{ fontSize:11 }}>{inst}</span>
-              </button>
-            );
-          })}
+        <div style={{ background:"var(--color-background-primary)", border:"0.5px solid var(--color-border-tertiary)", borderRadius:"var(--border-radius-md)", padding:"10px 12px", display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:20 }}>{INST_ICON[instrument]}</span>
+          <div>
+            <div style={{ fontSize:14, fontWeight:500, color:"var(--color-text-primary)" }}>{instrument}</div>
+            <div style={{ fontSize:11, color:"var(--color-text-tertiary)", marginTop:1 }}>Instrumen utama murid</div>
+          </div>
         </div>
       </div>
 
