@@ -48,6 +48,14 @@ function saveData(d) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch(e) {}
 }
 
+function getErrorMessage(error) {
+  if (!error) return "Unknown error";
+  if (error.message) return error.message;
+  if (error.error_description) return error.error_description;
+  if (error.details) return error.details;
+  try { return JSON.stringify(error); } catch(e) { return String(error); }
+}
+
 function toDateStr(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -468,7 +476,7 @@ export default function App() {
         setSyncStatus("Tersinkron ke Supabase");
       } catch (error) {
         console.error(error);
-        if (alive) setSyncStatus("Supabase gagal, pakai data lokal");
+        if (alive) setSyncStatus("Supabase gagal: " + getErrorMessage(error));
       }
     }
 
@@ -496,7 +504,7 @@ export default function App() {
       setSyncStatus(isSupabaseConfigured ? "Tersinkron ke Supabase" : "Mode lokal");
     } catch (error) {
       console.error(error);
-      setSyncStatus("Supabase gagal, pakai data lokal");
+      setSyncStatus("Supabase gagal: " + getErrorMessage(error));
     }
     update(function(prev) {
       return {
@@ -512,7 +520,7 @@ export default function App() {
       setSyncStatus(isSupabaseConfigured ? "Tersinkron ke Supabase" : "Mode lokal");
     } catch (error) {
       console.error(error);
-      setSyncStatus("Supabase gagal, data lokal tetap berubah");
+      setSyncStatus("Supabase gagal: " + getErrorMessage(error));
     }
     update(function(prev) {
       return {
@@ -538,7 +546,7 @@ export default function App() {
         .then(function() { setSyncStatus(isSupabaseConfigured ? "Tersinkron ke Supabase" : "Mode lokal"); })
         .catch(function(error) {
           console.error(error);
-          setSyncStatus("Supabase gagal, data lokal tetap berubah");
+          setSyncStatus("Supabase gagal: " + getErrorMessage(error));
         });
     }
   }, [update]);

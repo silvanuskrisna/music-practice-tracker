@@ -33,6 +33,13 @@ create table if not exists public.practice_sessions (
 create index if not exists practice_sessions_student_date_idx
   on public.practice_sessions(student_id, practice_date desc);
 
+alter table public.students disable row level security;
+alter table public.practice_sessions disable row level security;
+
+grant usage on schema public to anon;
+grant select, insert, update, delete on public.students to anon;
+grant select, insert, update, delete on public.practice_sessions to anon;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -63,3 +70,5 @@ select
   count(*)::integer as session_count
 from public.practice_sessions ps
 group by ps.student_id, date_trunc('week', ps.practice_date)::date;
+
+grant select on public.weekly_student_totals to anon;
