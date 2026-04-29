@@ -944,7 +944,7 @@ function MetronomeTab({ running, setRunning }) {
         </button>
       </div>
       <div style={{ marginTop:"1.5rem", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-        {[60,80,100,120,140,160].map(function(b) {
+        {[70,80,100,120,140,160].map(function(b) {
           return (
             <button key={b} onClick={function() { setBpm(b); }}
               style={{ padding:"8px", fontSize:12, border:"0.5px solid var(--color-border-tertiary)", borderRadius:"var(--border-radius-md)", background:bpm===b?"var(--color-background-secondary)":"transparent", color:"var(--color-text-secondary)", cursor:"pointer" }}>
